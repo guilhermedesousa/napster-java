@@ -6,6 +6,7 @@ import java.util.*;
 
 public class ServerImpl extends UnicastRemoteObject implements ServerInterface {
     private Map<String, List<String>> filePeersMap;
+
     public ServerImpl() throws RemoteException {
         super();
         this.filePeersMap = new HashMap<>();
@@ -22,10 +23,17 @@ public class ServerImpl extends UnicastRemoteObject implements ServerInterface {
             peersWithFile.add(String.format("%s %s", ip, port));
             filePeersMap.put(fileName, peersWithFile);
         }
+
+        System.out.println(String.format("Peer %s:%s adicionado com arquivos %s", ip, port, String.join(" ", fileNames)));
     }
 
     public String join(String peerData) throws RemoteException {
         registerPeer(peerData);
         return "JOIN_OK";
+    }
+
+    public List<String> search(String fileName) throws RemoteException {
+        // TODO: get ip and port of the peer and print it
+        return filePeersMap.getOrDefault(fileName, new ArrayList<>());
     }
 }

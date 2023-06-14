@@ -72,7 +72,25 @@ public class Peer {
         }
     }
 
-    public static void main(String[] args)  {
+    public void getListOfPeers(String fileName) {
+        try {
+            Registry registry = LocateRegistry.getRegistry();
+            ServerInterface sic = (ServerInterface) registry.lookup("server");
+            List<String> response = sic.search(fileName);
+
+            System.out.println(String.format("peers com arquivo solicitado: %s", response.toString()));
+        } catch (RemoteException | NotBoundException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private static String getPeerInput() throws IOException {
+        InputStreamReader is = new InputStreamReader(System.in);
+        BufferedReader reader = new BufferedReader(is);
+        return reader.readLine();
+    }
+
+    public static void main(String[] args) throws IOException {
         if (args.length < 3) {
             System.out.println("Usage: java peer.Peer <IP> <port> <folder>");
             return;
@@ -84,7 +102,21 @@ public class Peer {
 
         Peer peer = new Peer(ip, port, folder);
 
-        // run join() on the server
         peer.send();
+
+        while (true) {
+            String peerInput = getPeerInput();
+
+            if (peerInput.equalsIgnoreCase("exit")) {
+                System.out.println("Closing the Peer...");
+                break;
+            }
+
+            String[] inputParts = peerInput.split(" ");
+
+            if (inputParts.length == 1) {
+                peer.getListOfPeers(inputParts[0]);
+            }
+        }
     }
 }
