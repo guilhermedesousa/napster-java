@@ -76,9 +76,19 @@ public class Peer {
         try {
             Registry registry = LocateRegistry.getRegistry();
             ServerInterface sic = (ServerInterface) registry.lookup("server");
-            List<String> response = sic.search(fileName);
+            List<String> response = sic.search(fileName, ip, port);
 
             System.out.println(String.format("peers com arquivo solicitado: %s", response.toString()));
+        } catch (RemoteException | NotBoundException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void updatePeerList(String fileName) {
+        try {
+            Registry registry = LocateRegistry.getRegistry();
+            ServerInterface sic = (ServerInterface) registry.lookup("server");
+            String response = sic.update(fileName, ip, port);
         } catch (RemoteException | NotBoundException e) {
             e.printStackTrace();
         }
@@ -114,8 +124,10 @@ public class Peer {
 
             String[] inputParts = peerInput.split(" ");
 
-            if (inputParts.length == 1) {
-                peer.getListOfPeers(inputParts[0]);
+            if (peerInput.contains("SEARCH")) {
+                peer.getListOfPeers(inputParts[1]);
+            } else if (peerInput.contains("UPDATE")) {
+                peer.updatePeerList(inputParts[1]);
             }
         }
     }

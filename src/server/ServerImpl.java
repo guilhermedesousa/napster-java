@@ -32,8 +32,16 @@ public class ServerImpl extends UnicastRemoteObject implements ServerInterface {
         return "JOIN_OK";
     }
 
-    public List<String> search(String fileName) throws RemoteException {
-        // TODO: get ip and port of the peer and print it
+    public List<String> search(String fileName, String ip, int port) throws RemoteException {
+        System.out.println(String.format("Peer %s:%s solicitou arquivo %s", ip, port, fileName));
         return filePeersMap.getOrDefault(fileName, new ArrayList<>());
+    }
+
+    public String update(String newFileName, String ip, int port) throws RemoteException {
+        List<String> peersWithFile = filePeersMap.getOrDefault(newFileName, new ArrayList<>());
+        peersWithFile.add(String.format("%s %s", ip, port));
+        filePeersMap.put(newFileName, peersWithFile);
+
+        return "UPDATE_OK";
     }
 }
