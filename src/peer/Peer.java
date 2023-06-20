@@ -3,6 +3,7 @@ package peer;
 import server.ServerInterface;
 
 import java.io.*;
+import java.net.ServerSocket;
 import java.net.Socket;
 import java.rmi.NotBoundException;
 import java.rmi.RemoteException;
@@ -10,7 +11,6 @@ import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Scanner;
 
 public class Peer {
     private String ip;
@@ -25,10 +25,8 @@ public class Peer {
 
         File peerFolder = new File(folder);
         if (!peerFolder.exists()) {
-            if (peerFolder.mkdirs()) {
-                System.out.println("Peer's folder created on the path: " + folder);
-            } else {
-                System.out.println("Error to create the peer's folder on the path: " + folder);
+            if(!peerFolder.mkdirs()) {
+                return;
             }
         }
 
@@ -72,32 +70,132 @@ public class Peer {
         }
     }
 
+    public void requestFileToPeer(List<String[]> peers, String fileName) throws IOException {
+        if (peers.size() > 0) {
+            String[] selectedPeer = peers.get(0);
+            Socket s = new Socket(selectedPeer[0], Integer.parseInt(selectedPeer[1]));
+
+            OutputStream os = s.getOutputStream();
+            DataOutputStream writer = new DataOutputStream(os);
+
+//            InputStreamReader isr = new InputStreamReader(s.getInputStream());
+//            BufferedReader reader = new BufferedReader(isr);
+
+            writer.writeBytes(fileName + "\n");
+
+            File directory = new File(folder);
+            if (!directory.exists()) {
+                directory.mkdirs();
+            }
+
+            DataInputStream dis = new DataInputStream(s.getInputStream());
+            long fileSize = dis.readLong();
+//            long fileSize = Long.parseLong(reader.readLine());
+            System.out.println("ok");
+
+            File fileToReceive = new File(directory, fileName);
+
+            InputStream is = s.getInputStream();
+            FileOutputStream fos = new FileOutputStream(fileToReceive);
+
+            byte[] buffer = new byte[4096];
+            int bytesRead;
+            long totalBytesRead = 0;
+
+            while (totalBytesRead < fileSize && ((bytesRead = is.read(buffer)) != -1)) {
+                fos.write(buffer, 0, bytesRead);
+                totalBytesRead += bytesRead;
+            }
+
+            fos.close();
+            is.close();
+            s.close();
+        }
+    }
+
     public void getListOfPeers(String fileName) {
         try {
             Registry registry = LocateRegistry.getRegistry();
             ServerInterface sic = (ServerInterface) registry.lookup("server");
-            List<String> response = sic.search(fileName, ip, port);
+            List<String[]> response = sic.search(fileName, ip, port);
 
-            System.out.println(String.format("peers com arquivo solicitado: %s", response.toString()));
-        } catch (RemoteException | NotBoundException e) {
+            StringBuilder builder = new StringBuilder();
+            builder.append("peers com arquivo solicitado: ");
+
+            for (String[] peer : response) {
+                builder.append(String.format("%s:%s ", peer[0], peer[1]));
+            }
+
+            System.out.println(builder.toString());
+            requestFileToPeer(response, fileName);
+        } catch (NotBoundException | IOException e) {
             e.printStackTrace();
         }
     }
 
-    public void updatePeerList(String fileName) {
-        try {
-            Registry registry = LocateRegistry.getRegistry();
-            ServerInterface sic = (ServerInterface) registry.lookup("server");
-            String response = sic.update(fileName, ip, port);
-        } catch (RemoteException | NotBoundException e) {
-            e.printStackTrace();
-        }
-    }
+//    public void updatePeerList(String fileName) {
+//        try {
+//            Registry registry = LocateRegistry.getRegistry();
+//            ServerInterface sic = (ServerInterface) registry.lookup("server");
+//            String response = sic.update(fileName, ip, port);
+//        } catch (RemoteException | NotBoundException e) {
+//            e.printStackTrace();
+//        }
+//    }
 
     private static String getPeerInput() throws IOException {
         InputStreamReader is = new InputStreamReader(System.in);
         BufferedReader reader = new BufferedReader(is);
         return reader.readLine();
+    }
+
+    private void startFileServer(int serverPort) {
+        try {
+            ServerSocket serverSocket = new ServerSocket(serverPort);
+
+            while (true) {
+                Socket clientSocket = serverSocket.accept();
+
+                Thread clientThread = new Thread(() -> {
+                    handleClientConnection(clientSocket, this);
+                });
+
+                clientThread.start();
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void handleClientConnection(Socket clientSocket, Peer peer) {
+        try {
+            InputStreamReader is = new InputStreamReader(clientSocket.getInputStream());
+            BufferedReader reader = new BufferedReader(is);
+
+            OutputStream os = clientSocket.getOutputStream();
+            DataOutputStream writer = new DataOutputStream(os);
+
+            String fileName = reader.readLine();
+
+            File fileToSend = new File(folder, fileName);
+
+            if (fileToSend.exists() && fileToSend.canRead()) {
+                FileInputStream fileInputStream = new FileInputStream(fileToSend);
+
+                long fileSize = fileToSend.length();
+                writer.writeLong(fileSize);
+
+                byte[] buffer = new byte[4096];
+                int bytesRead;
+                while ((bytesRead = fileInputStream.read(buffer)) != -1) {
+                    writer.write(buffer, 0, bytesRead);
+                }
+
+                fileInputStream.close();
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     public static void main(String[] args) throws IOException {
@@ -114,6 +212,11 @@ public class Peer {
 
         peer.send();
 
+        Thread fileServerThread = new Thread(() -> {
+            peer.startFileServer(port);
+        });
+        fileServerThread.start();
+
         while (true) {
             String peerInput = getPeerInput();
 
@@ -124,10 +227,8 @@ public class Peer {
 
             String[] inputParts = peerInput.split(" ");
 
-            if (peerInput.contains("SEARCH")) {
-                peer.getListOfPeers(inputParts[1]);
-            } else if (peerInput.contains("UPDATE")) {
-                peer.updatePeerList(inputParts[1]);
+            if (inputParts.length == 1) {
+                peer.getListOfPeers(inputParts[0]);
             }
         }
     }
