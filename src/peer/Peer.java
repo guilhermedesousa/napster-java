@@ -14,11 +14,11 @@ import java.util.List;
 
 public class Peer {
     private String ip;
-    private int port;
+    private String port;
     private String folder;
     List<String> files;
 
-    public Peer(String ip, int port, String folder) {
+    public Peer(String ip, String port, String folder) {
         this.ip = ip;
         this.port = port;
         this.folder = folder;
@@ -113,7 +113,7 @@ public class Peer {
         }
     }
 
-    public void getListOfPeers(String fileName) {
+    public List<String[]> getListOfPeers(String fileName) {
         try {
             Registry registry = LocateRegistry.getRegistry();
             ServerInterface sic = (ServerInterface) registry.lookup("server");
@@ -127,10 +127,11 @@ public class Peer {
             }
 
             System.out.println(builder.toString());
-            requestFileToPeer(response, fileName);
+            return response;
         } catch (NotBoundException | IOException e) {
             e.printStackTrace();
         }
+        return new ArrayList<>();
     }
 
 //    public void updatePeerList(String fileName) {
@@ -149,9 +150,9 @@ public class Peer {
         return reader.readLine();
     }
 
-    private void startFileServer(int serverPort) {
+    private void startFileServer(String serverPort) {
         try {
-            ServerSocket serverSocket = new ServerSocket(serverPort);
+            ServerSocket serverSocket = new ServerSocket(Integer.parseInt(serverPort));
 
             while (true) {
                 Socket clientSocket = serverSocket.accept();
@@ -205,7 +206,7 @@ public class Peer {
         }
 
         String ip = args[0];
-        int port = Integer.parseInt(args[1]);
+        String port = args[1];
         String folder = args[2];
 
         Peer peer = new Peer(ip, port, folder);
@@ -224,12 +225,15 @@ public class Peer {
                 System.out.println("Closing the Peer...");
                 break;
             }
-
+            
+            boolean isSearch = peerInput.matches("^(.+)/.(.+)$");
+            boolean isDownload = peerInput.matches("^(.+)/:(.+)$");
+            
             String[] inputParts = peerInput.split(" ");
 
             if (inputParts.length == 1) {
-                peer.getListOfPeers(inputParts[0]);
-            }
+                List<String[]> listOfPeers = peer.getListOfPeers(inputParts[0]);
+            } 
         }
     }
 }

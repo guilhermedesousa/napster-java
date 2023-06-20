@@ -32,7 +32,7 @@ public class ServerImpl extends UnicastRemoteObject implements ServerInterface {
         return "JOIN_OK";
     }
 
-    public List<String[]> search(String fileName, String ip, int port) throws RemoteException {
+    public List<String[]> search(String fileName, String ip, String port) throws RemoteException {
         System.out.printf("Peer %s:%s solicitou arquivo %s%n", ip, port, fileName);
         return filePeersMap.getOrDefault(fileName, new ArrayList<>());
     }
