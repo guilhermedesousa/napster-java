@@ -6,16 +6,21 @@ import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
 
 public class Server {
-    private static final int RMI_PORT = 1099;
-    private static final String RMI_BINDING_NAME = "server";
-
     public static void main(String[] args) {
         try {
             ServerInterface si = new ServerImpl();
 
-            Registry registry = LocateRegistry.createRegistry(RMI_PORT);
+            if (args.length < 2) {
+                System.out.println("Usage: java server.Server <IP> <RMI_port>");
+                return;
+            }
 
-            registry.bind(RMI_BINDING_NAME, si);
+            String ip = args[0];
+            String port = args[1];
+
+            Registry registry = LocateRegistry.createRegistry(Integer.parseInt(port));
+
+            registry.bind(String.format("rmi://%s/server", ip), si);
 
             System.out.println("Server running...");
         } catch (RemoteException | AlreadyBoundException e) {

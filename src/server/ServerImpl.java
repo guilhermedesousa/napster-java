@@ -37,11 +37,11 @@ public class ServerImpl extends UnicastRemoteObject implements ServerInterface {
         return filePeersMap.getOrDefault(fileName, new ArrayList<>());
     }
 
-//    public String update(String newFileName, String ip, int port) throws RemoteException {
-//        List<String> peersWithFile = filePeersMap.getOrDefault(newFileName, new ArrayList<>());
-//        peersWithFile.add(String.format("%s %s", ip, port));
-//        filePeersMap.put(newFileName, peersWithFile);
-//
-//        return "UPDATE_OK";
-//    }
+    public String update(String newFileName, String ip, String port) throws RemoteException {
+        List<String[]> peersWithFile = filePeersMap.getOrDefault(newFileName, new ArrayList<>());
+        peersWithFile.add(new String[]{ip, port});
+        filePeersMap.put(newFileName, peersWithFile);
+
+        return "UPDATE_OK";
+    }
 }
