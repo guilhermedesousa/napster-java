@@ -17,16 +17,76 @@ public class Peer {
     private String port;
     private String folder;
     List<String> files;
+    ServerInterface sic;
 
+    /**
+     * Peer thread to deal with file requests
+     */
+    public class PeerServiceThread extends Thread {
+        private Socket node = null;
+
+        public PeerServiceThread(Socket node) {
+            this.node = node;
+        }
+
+        public void run() {
+            try {
+                InputStreamReader is = new InputStreamReader(node.getInputStream());
+                BufferedReader reader = new BufferedReader(is);
+
+                OutputStream os = node.getOutputStream();
+                DataOutputStream writer = new DataOutputStream(os);
+
+                String fileName = reader.readLine();
+                File fileToSend = new File(folder, fileName);
+
+                boolean connectionAccepted = Math.random() >= 0.5;
+
+                if (connectionAccepted) {
+                    if (fileToSend.exists() && fileToSend.canRead()) {
+                        FileInputStream fileInputStream = new FileInputStream(fileToSend);
+
+                        long fileSize = fileToSend.length();
+                        writer.writeLong(fileSize);
+
+                        byte[] buffer = new byte[4096];
+                        int bytesRead;
+
+                        while ((bytesRead = fileInputStream.read(buffer)) != -1) {
+                            writer.write(buffer, 0, bytesRead);
+                        }
+
+                        fileInputStream.close();
+                    }
+                } else {
+                    writer.writeLong(-1L);
+                }
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }
+    }
+
+    /**
+     * Create an instance of the Peer.
+     *
+     * @param ip ip address of the peer
+     * @param port port of the peer
+     * @param folder folder path of the peer to retrieve and store files
+     */
     public Peer(String ip, String port, String folder) {
         this.ip = ip;
         this.port = port;
         this.folder = folder;
 
         this.createPeerFolder();
-        this.files = this.listFiles();
+        this.files = this.listFileNames();
+        this.createServerInterface();
     }
 
+    /**
+     * Create the Peer folder, if it does not exist yet.
+     */
     private void createPeerFolder() {
         File peerFolder = new File(folder);
 
@@ -35,7 +95,11 @@ public class Peer {
         }
     }
 
-    private List<String> listFiles() {
+    /**
+     * Returns a list of file names from the peer folder.
+     * @return the list of file names
+     */
+    private List<String> listFileNames() {
         List<String> fileNames = new ArrayList<>();
 
         File peerFolder = new File(folder);
@@ -52,66 +116,42 @@ public class Peer {
         return fileNames;
     }
 
-    private String filesToString() {
-        return String.join(" ", this.files);
-    }
-
-    public void send() {
-        String fileNames = this.filesToString();
-
+    /**
+     * Create the connection between the client and the server through RMI.
+     */
+    private void createServerInterface() {
         try {
             Registry registry = LocateRegistry.getRegistry();
-            ServerInterface sic = (ServerInterface) registry.lookup("rmi://127.0.0.1/server");
-            String response = sic.join(String.format("%s %s %s", ip, port, fileNames));
-
-            if (response.equals("JOIN_OK")) {
-                System.out.println(String.format("Sou peer %s:%s com arquivos %s", ip, port, fileNames));
-            }
+            this.sic = (ServerInterface) registry.lookup("rmi://127.0.0.1/server");
         } catch (RemoteException | NotBoundException e) {
             e.printStackTrace();
         }
     }
 
-    public void requestFileToPeer(String serverIP, String serverPort, String fileName) throws IOException {
-        Socket s = new Socket(serverIP, Integer.parseInt(serverPort));
+    /**
+     * Perform the join operation in the server through RMI.
+     */
+    private void join() {
+        try {
+            String response = sic.join(ip, port, files);
 
-        OutputStream os = s.getOutputStream();
-        DataOutputStream writer = new DataOutputStream(os);
-
-        writer.writeBytes(fileName + "\n");
-
-        File directory = new File(folder);
-        if (!directory.exists()) {
-            directory.mkdirs();
+            if (response.equals("JOIN_OK")) {
+                System.out.println(String.format("Sou peer %s:%s com arquivos %s", ip, port, String.join(" ", files)));
+            }
+        } catch (RemoteException e) {
+            e.printStackTrace();
         }
-
-        DataInputStream dis = new DataInputStream(s.getInputStream());
-        long fileSize = dis.readLong();
-
-        File fileToReceive = new File(directory, fileName);
-
-        InputStream is = s.getInputStream();
-        FileOutputStream fos = new FileOutputStream(fileToReceive);
-
-        byte[] buffer = new byte[4096];
-        int bytesRead;
-        long totalBytesRead = 0;
-
-        while (totalBytesRead < fileSize && ((bytesRead = is.read(buffer)) != -1)) {
-            fos.write(buffer, 0, bytesRead);
-            totalBytesRead += bytesRead;
-        }
-
-        fos.close();
-        is.close();
-        s.close();
     }
 
-    public List<String[]> getListOfPeers(String fileName) {
+    /**
+     * Perform the search operation in the server through RMI.
+     *
+     * @param fileName the requested file
+     * @return a list of peers who contain the file, or an empty list otherwise
+     */
+    public void search(String fileName) {
         try {
-            Registry registry = LocateRegistry.getRegistry();
-            ServerInterface sic = (ServerInterface) registry.lookup("rmi://127.0.0.1/server");
-            List<String[]> response = sic.search(fileName, ip, port);
+            List<String[]> response = sic.search(ip, port, fileName);
 
             StringBuilder builder = new StringBuilder();
             builder.append("peers com arquivo solicitado: ");
@@ -121,29 +161,28 @@ public class Peer {
             }
 
             System.out.println(builder.toString());
-            return response;
-        } catch (NotBoundException | IOException e) {
+        } catch (IOException e) {
             e.printStackTrace();
         }
-        return new ArrayList<>();
     }
 
-    public void updatePeerList(String fileName) {
+    /**
+     * Update the peer information in the server with the new downloaded file.
+     *
+     * @param fileName the downloaded file
+     */
+    public void update(String fileName) {
         try {
-            Registry registry = LocateRegistry.getRegistry();
-            ServerInterface sic = (ServerInterface) registry.lookup("rmi://127.0.0.1/server");
-            String response = sic.update(fileName, ip, port);
-        } catch (RemoteException | NotBoundException e) {
+            String response = sic.update(ip, port, fileName);
+        } catch (RemoteException e) {
             e.printStackTrace();
         }
     }
 
-    private static String getPeerInput() throws IOException {
-        InputStreamReader is = new InputStreamReader(System.in);
-        BufferedReader reader = new BufferedReader(is);
-        return reader.readLine();
-    }
-
+    /**
+     * Start the peer server to attend to requests.
+     * @param serverPort the peer server port
+     */
     private void startFileServer(String serverPort) {
         try {
             ServerSocket serverSocket = new ServerSocket(Integer.parseInt(serverPort));
@@ -151,93 +190,144 @@ public class Peer {
             while (true) {
                 Socket clientSocket = serverSocket.accept();
 
-                Thread clientThread = new Thread(() -> {
-                    handleClientConnection(clientSocket, this);
-                });
-
-                clientThread.start();
+                PeerServiceThread thread = new PeerServiceThread(clientSocket);
+                thread.start();
             }
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
-    private void handleClientConnection(Socket clientSocket, Peer peer) {
+    /**
+     * Request a specific file to another Peer in the network.
+     *
+     * @param serverIP the server ip address
+     * @param serverPort the server port
+     * @param fileName the file name
+     */
+    public void requestFileToPeer(String serverIP, String serverPort, String fileName) {
         try {
-            InputStreamReader is = new InputStreamReader(clientSocket.getInputStream());
-            BufferedReader reader = new BufferedReader(is);
+            Socket s = new Socket(serverIP, Integer.parseInt(serverPort));
 
-            OutputStream os = clientSocket.getOutputStream();
+            OutputStream os = s.getOutputStream();
             DataOutputStream writer = new DataOutputStream(os);
 
-            String fileName = reader.readLine();
+            writer.writeBytes(fileName + "\n");
 
-            File fileToSend = new File(folder, fileName);
-
-            if (fileToSend.exists() && fileToSend.canRead()) {
-                FileInputStream fileInputStream = new FileInputStream(fileToSend);
-
-                long fileSize = fileToSend.length();
-                writer.writeLong(fileSize);
-
-                byte[] buffer = new byte[4096];
-                int bytesRead;
-                while ((bytesRead = fileInputStream.read(buffer)) != -1) {
-                    writer.write(buffer, 0, bytesRead);
-                }
-
-                fileInputStream.close();
+            File directory = new File(folder);
+            if (!directory.exists()) {
+                directory.mkdirs();
             }
+
+            DataInputStream dis = new DataInputStream(s.getInputStream());
+            long fileSize = dis.readLong();
+
+            if (fileSize == -1L) {
+                System.out.println("Conexao rejeitada pelo servidor.");
+                return;
+            }
+
+            File fileToReceive = new File(directory, fileName);
+
+            InputStream is = s.getInputStream();
+            FileOutputStream fos = new FileOutputStream(fileToReceive);
+
+            byte[] buffer = new byte[4096];
+            int bytesRead;
+            long totalBytesRead = 0;
+
+            while (totalBytesRead < fileSize && ((bytesRead = is.read(buffer)) != -1)) {
+                fos.write(buffer, 0, bytesRead);
+                totalBytesRead += bytesRead;
+            }
+
+            System.out.printf("Arquivo %s baixado com sucesso na pasta %s\n", fileName, folder);
+            this.update(fileName);
+
+            fos.close();
+            is.close();
+            s.close();
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
-    public static void main(String[] args) throws IOException {
-        if (args.length < 3) {
-            System.out.println("Usage: java peer.Peer <IP> <port> <folder>");
-            return;
-        }
+    /**
+     * Get the peer input from the console.
+     *
+     * @return the input string
+     * @throws IOException exception when reading from the console
+     */
+    private static String getPeerInput() throws IOException {
+        InputStreamReader is = new InputStreamReader(System.in);
+        BufferedReader reader = new BufferedReader(is);
+        return reader.readLine();
+    }
 
-        String ip = args[0];
-        String port = args[1];
-        String folder = args[2];
+    /**
+     * Check if a given file name is valid.
+     *
+     * @param fileName the file name
+     * @return true if it is a valid file name, false otherwise
+     */
+    private static boolean isValidFileName(String fileName) {
+        return fileName.matches("^[^/\\\\?*:|\"<>\\s]+\\.[\\w]+$");
+    }
 
-        Peer peer = new Peer(ip, port, folder);
-
-        peer.send();
-
-        Thread fileServerThread = new Thread(() -> {
-            peer.startFileServer(port);
-        });
-        fileServerThread.start();
-
-        String requestedFile = "";
-
-        while (true) {
-            String peerInput = getPeerInput();
-
-            if (peerInput.equalsIgnoreCase("exit")) {
-                System.out.println("Closing the Peer...");
-                break;
+    public static void main(String[] args) {
+        try {
+            if (args.length < 3) {
+                throw new IllegalArgumentException("Uso: java peer.Peer <IP> <port> <folder>");
             }
-            
-            boolean isSearch = peerInput.matches("^[^/\\\\?*:|\"<>\\s]+\\.[\\w]+$");
-            boolean isDownload = peerInput.matches("^(\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}):(\\d+)$");
 
-            if (isSearch) {
-                requestedFile = peerInput;
-                List<String[]> listOfPeers = peer.getListOfPeers(peerInput);
-            } else if (isDownload) {
-                String serverIP = peerInput.split(":")[0];
-                String serverPort = peerInput.split(":")[1];
+            String ip = args[0];
+            String port = args[1];
+            String folder = args[2];
 
-                if (!serverIP.equals(ip) || !serverPort.equals(port)) {
-                    peer.requestFileToPeer(serverIP, serverPort, requestedFile);
-                    peer.updatePeerList(requestedFile);
-                    System.out.printf("Arquivo %s baixado com sucesso na pasta %s\n", requestedFile, folder);
+            // Peer initialization
+            Peer peer = new Peer(ip, port, folder);
+
+            // Perform the JOIN operation
+            peer.join();
+
+            // Create a Thread to listen to requests
+            Thread fileServerThread = new Thread(() -> {
+                peer.startFileServer(port);
+            });
+            fileServerThread.start();
+
+            String lastRequestedFile = null;
+
+            while (true) {
+                String peerInput = getPeerInput();
+
+                if (peerInput.equalsIgnoreCase("exit")) {
+                    System.out.println("Fechando o Peer...");
+                    break;
+                }
+
+                String[] inputParts = peerInput.split(":");
+
+                boolean isSearch = inputParts.length == 1;
+                boolean isDownload = inputParts.length == 2;
+
+                if (isSearch && isValidFileName(peerInput)) {
+                    lastRequestedFile = peerInput;
+                    peer.search(lastRequestedFile);
+                } else if (isDownload) {
+                    String serverIP = inputParts[0];
+                    String serverPort = inputParts[1];
+
+                    if ((!serverIP.equals(ip) || !serverPort.equals(port)) && lastRequestedFile != null) {
+                        peer.requestFileToPeer(serverIP, serverPort, lastRequestedFile);
+                    } else {
+                        System.out.println("Erro: nao pode requisitar o arquivo para si proprio");
+                    }
                 }
             }
+        } catch (IOException e) {
+            e.printStackTrace();
         }
+
     }
 }
