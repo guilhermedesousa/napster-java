@@ -153,14 +153,18 @@ public class Peer {
         try {
             List<String[]> response = sic.search(ip, port, fileName);
 
-            StringBuilder builder = new StringBuilder();
-            builder.append("peers com arquivo solicitado: ");
+            if (response.size() > 0) {
+                StringBuilder builder = new StringBuilder();
+                builder.append("peers com arquivo solicitado: ");
 
-            for (String[] peer : response) {
-                builder.append(String.format("%s:%s ", peer[0], peer[1]));
+                for (String[] peer : response) {
+                    builder.append(String.format("%s:%s ", peer[0], peer[1]));
+                }
+
+                System.out.println(builder.toString());
+            } else {
+                System.out.printf("Servidor nao contem o arquivo %s", fileName);
             }
-
-            System.out.println(builder.toString());
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -291,10 +295,10 @@ public class Peer {
             peer.join();
 
             // Create a Thread to listen to requests
-            Thread fileServerThread = new Thread(() -> {
+            Thread FileServerThread = new Thread(() -> {
                 peer.startFileServer(port);
             });
-            fileServerThread.start();
+            FileServerThread.start();
 
             String lastRequestedFile = null;
 
